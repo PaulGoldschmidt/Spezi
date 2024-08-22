@@ -128,10 +128,7 @@ final class ModuleBuilderTests: XCTestCase {
             }
         }
         
-        // Assert that only one module was instantiated
         XCTAssertEqual(UniqueModule.instanceCounter.value, 1, "Module should be instantiated only once")
-        
-        // Assert that configure() is called only once
         XCTAssertEqual(configuredModules.count, 1, "configure() should be called only once")
     }
 
