@@ -26,7 +26,6 @@ final class ModuleBuilderTests: XCTestCase {
             self.xctestCase = xctestCase
         }
         
-        
         private static func expectation(named: String) -> XCTestExpectation {
             let expectation = XCTestExpectation(description: "FirstTestModule")
             expectation.assertForOverFulfill = true
@@ -77,6 +76,64 @@ final class ModuleBuilderTests: XCTestCase {
         return modules
     }
     
+    @MainActor //TODO: Validate unit test by multiple package registration,
+    func testModuleInstantiationOnce() throws {
+        final class AtomicCounter: @unchecked Sendable {
+            private var _value: Int = 0
+            private let lock = NSLock()
+            
+            func increment() -> Int {
+                lock.lock()
+                defer { lock.unlock() }
+                _value += 1
+                return _value
+            }
+            
+            var value: Int {
+                lock.lock()
+                defer { lock.unlock() }
+                return _value
+            }
+        }
+        
+        class UniqueModule: Module { // reg UUIDs for Modules
+            static let instanceCounter = AtomicCounter()
+            let id: UUID
+            
+            init() {
+                self.id = UUID()
+                let _ = UniqueModule.instanceCounter.increment() // UniqueModule initialized
+            }
+            
+            func configure() {}
+        }
+        
+        // Create a single instance of UniqueModule
+        let sharedModule = UniqueModule()
+        
+        @ModuleBuilder
+        var modules: ModuleCollection {
+            sharedModule // First reference to sharedModule
+            sharedModule // Second reference to the same sharedModule
+        }
+        
+        let dependencyManager = DependencyManager(modules.elements)
+        dependencyManager.resolve()
+        
+        var configuredModules = Set<UUID>()
+        for module in dependencyManager.initializedModules {
+            if let uniqueModule = module as? UniqueModule {
+                configuredModules.insert(uniqueModule.id)
+                uniqueModule.configure()
+            }
+        }
+        
+        // Assert that only one module was instantiated
+        XCTAssertEqual(UniqueModule.instanceCounter.value, 1, "Module should be instantiated only once")
+        
+        // Assert that configure() is called only once
+        XCTAssertEqual(configuredModules.count, 1, "configure() should be called only once")
+    }
 
     @MainActor
     func testModuleBuilderIf() throws {
@@ -121,3 +178,4 @@ final class ModuleBuilderTests: XCTestCase {
         try expectations.wait()
     }
 }
+ 
